@@ -15,16 +15,31 @@ module Fluent
         config_param :aws_key_id, :string, :default => nil
         config_param :aws_sec_key, :string, :default => nil
         
-        config_param :sns_topic_name, :string
         config_param :sns_subject_key, :string, :default => nil
         config_param :sns_subject, :string, :default => nil
         config_param :sns_endpoint, :string, :default => 'sns.ap-northeast-1.amazonaws.com'
         config_param :proxy, :string, :default => ENV['HTTP_PROXY']
-        
+
+        config_param :sns_topic_name, :string, :default => nil
+        config_param :sns_topic_map_tag, :bool, :default => false
+        config_param :remove_tag_prefix, :string, :default => nil
+        config_param :sns_topic_map_key, :string, :default => nil
+
         def configure(conf)
             super
+
+            @topic_generator = case
+                               when @sns_topic_name
+                                   lambda { |tag,record| @sns_topic_name }
+                               when @sns_topic_map_key
+                                   lambda { |tag,record| record[@sns_topic_map_key]}
+                               when @sns_topic_map_tag
+                                   lambda { |tag,record| tag.gsub(/^#{@remove_tag_prefix}(\.)?/, '')}
+                               else
+                                   raise Fluent::ConfigError, "no one way specified to decide target"
+                               end
         end
-        
+
         def start
             super
             options = {}
@@ -37,7 +52,7 @@ module Fluent
             AWS.config(options)
             
             @sns = AWS::SNS.new
-            @topic = get_topic
+            @topics = get_topics
         end
         
         def shutdown
@@ -52,15 +67,20 @@ module Fluent
             chunk.msgpack_each do |tag, time, record|
                 record["time"] = Time.at(time).localtime
                 subject = record[@sns_subject_key] || @sns_subject  || 'Fluent-Notification'
-                @topic.publish(record.to_json, :subject => subject )
+                topic = @topic_generator.call(tag, record)
+                topic = topic.gsub(/\./, '-') if topic # SNS doesn't allow .
+                if @topics[topic]
+                    @topics[topic].publish(record.to_json, :subject => subject )
+                else
+                    $log.warn "Could not find topic '#{topic}' on SNS"
+                end
             end
         end
         
-        def get_topic()
-            @sns.topics.each do |topic|
-                if @sns_topic_name == topic.name
-                    return topic
-                end
+        def get_topics()
+            @sns.topics.inject({}) do |product, topic|
+                product[topic.name] = topic
+                product
             end
         end
     end

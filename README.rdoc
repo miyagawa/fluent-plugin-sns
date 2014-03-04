@@ -17,11 +17,19 @@ Send fluent-event as message to amazon SNS.
 
       type sns
 
-      # following attibutes are required
+      ### One of following methods to retrieve topic is required
 
+      # Use one, fixed string in config
       sns_topic_name {sns_topic_name}
 
-      # following attibutes are required if you don't use IAM Role
+      # Use tag
+      remove_tag_prefix sns
+      sns_topic_map_tag true # fluent's tag 'sns.Event.Foo' -> SNS topic 'Event-Foo'
+
+      # Use value of specified field in Fluentd event
+      sns_topic_map_key KEY_NAME
+
+      ### following attibutes are required if you don't use IAM Role
 
       aws_key_id {your_aws_key_id}
       aws_sec_key {your_aws_secret_key}
