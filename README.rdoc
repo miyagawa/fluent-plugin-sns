@@ -44,6 +44,8 @@ Send fluent-event as message to amazon SNS.
 
       proxy http(s)://{url}:{port}
 
+      flush_interval 1s
+
     </match>
 
 == TODO

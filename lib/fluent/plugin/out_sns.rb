@@ -2,7 +2,7 @@ module Fluent
     
     require 'aws-sdk'
 
-    class SNSOutput < Output
+    class SNSOutput < BufferedOutput
         
         Fluent::Plugin.register_output('sns', self)
         
@@ -43,14 +43,17 @@ module Fluent
         def shutdown
             super
         end
-        
-        def emit(tag, es, chain)
-            chain.next
-            es.each {|time,record|
+
+        def format(tag, time, record)
+            [tag, time, record].to_msgpack
+        end
+
+        def write(chunk)
+            chunk.msgpack_each do |tag, time, record|
                 record["time"] = Time.at(time).localtime
                 subject = record[@sns_subject_key] || @sns_subject  || 'Fluent-Notification'
                 @topic.publish(record.to_json, :subject => subject )
-            }
+            end
         end
         
         def get_topic()
